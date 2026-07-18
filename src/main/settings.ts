@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { RecentFile, Settings, SettingsChange } from '../shared/ipc'
 
 // Seeded once on first run; every value is visible and editable in Settings, and
-// every later change lands in the changelog with a Reset path (todoscout pattern).
+// every later change lands in the changelog with a Reset path.
 export const SEED: Settings = {
   audience: 'general',
   theme: 'light',
