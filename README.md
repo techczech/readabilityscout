@@ -2,8 +2,9 @@
 
 ![ReadabilityScout analysing a text: Flesch gauge, grade-consensus scale, sentence-rhythm strip, and word-level annotations](docs/screenshot.png)
 
-Analyse the readability of any text file on your Mac. Eight established
-formulas, a grade-consensus scale, an interactive sentence-rhythm strip, and
+Analyse the readability of any text on your Mac or PC — plain text, Markdown,
+PDF, and Word documents. Eight established formulas, a grade-consensus scale,
+an interactive sentence-rhythm strip, readability-principles checks, and
 annotations that show you *which* words and sentences are the problem — all in
 a native desktop window.
 
@@ -28,10 +29,19 @@ bun run test:smoke # end-to-end check: launch, open file, render, settings
 
 ## Use it
 
-- **⌘O** opens any text file. The app follows changes on disk: if you edit the
-  file in another editor, the analysis reloads silently — unless you have typed
-  over the buffer here, in which case a "changed on disk" pill offers a reload.
+- **⌘O** opens any text file — including **PDF** and **Word (.docx)**, whose
+  text is extracted in memory (layout ignored; legacy `.doc` gets a clear
+  message). The app follows changes on disk: if you edit the file in another
+  editor, the analysis reloads silently — unless you have typed over the buffer
+  here, in which case a "changed on disk" pill offers a reload.
   The app never writes to your files (ADR 0002).
+- **Markdown stays honest.** Image syntax, URLs and HTML tags never count as
+  words or sentences — `![alt text](https://…)` is ignored while the caption
+  beside it is analysed. The reader shows your raw text; the metrics see prose.
+- A **Principles card** checks the computable readability principles: heading
+  density, lists, long comma sequences (list candidates), opens-with-welcome,
+  verbs-over-nouns (nominalisation density), and reader address. These feed the
+  suggestions alongside the formula-based ones.
 - The **recents menu** (clock icon) re-opens the last 12 files.
 - Paste or type directly for scratch analysis; the four bundled mock samples
   (keys **1–4**) show the range from grade 4 to dense officialese.
@@ -47,7 +57,7 @@ bun run test:smoke # end-to-end check: launch, open file, render, settings
 
 | Path | Role |
 |---|---|
-| `src/main/` | Window, menu, file dialog/reading/watching, settings + recents store |
+| `src/main/` | Window, menu, file dialog/reading/watching, PDF/DOCX extraction, settings + recents store |
 | `src/preload/` | Typed `window.rs` IPC bridge |
 | `src/shared/ipc.ts` | Channel names and shared types |
 | `src/renderer/src/analysis/` | Engine (pure TS port), generated word lists + samples, insights |

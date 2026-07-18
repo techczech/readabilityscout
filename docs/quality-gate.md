@@ -1,4 +1,16 @@
-# Quality gate walkthrough (design-first Gate 5) — 2026-07-18
+# Quality gate walkthrough (design-first Gate 5)
+
+## 0.2.0 — 2026-07-18: **pass**
+
+Re-walked after the markdown/principles/formats milestone (ADR 0003). The
+smoke test now additionally covers: image-syntax exclusion from words and
+sentences (41 words / 4 sentences on the reported BBC-style case), URL
+non-annotation, Principles card rows, PDF and DOCX extraction through real IPC,
+legacy .doc rejection, and nominalisation flagging of bureaucratic text. All
+invariants below still hold; settings state on the dev machine was restored
+after testing (annotation layers back on).
+
+## 0.1.x — 2026-07-18: **pass**
 
 Result: **pass**. Verified by `e2e/smoke.mjs` (Playwright driving the real
 Electron build through IPC) plus packaged-app launch and window screenshots.

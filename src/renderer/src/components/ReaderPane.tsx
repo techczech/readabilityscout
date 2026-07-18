@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import { ScanText, Ruler } from 'lucide-react'
 import type { Settings } from '../../../shared/ipc'
-import { isAcademic, isFamiliar, splitParagraphs, type Analysis } from '../analysis/engine'
+import { isAcademic, isFamiliar, normaliseMarkdown, splitParagraphs, type Analysis } from '../analysis/engine'
 import { SAMPLES } from '../analysis/samples'
 
 const MIN_WORDS = 30
@@ -17,32 +17,40 @@ type Props = {
   onLoadSample: (id: string) => void
 }
 
-function annotate(sentence: string, wordLevel: boolean): React.ReactNode {
-  if (!wordLevel) return sentence
+// display = original sentence text; ntext = its normalised twin (same length,
+// markdown syntax blanked). Words inside blanked regions render unmarked so the
+// reader never contradicts the metrics.
+function annotate(display: string, ntext: string, wordLevel: boolean): React.ReactNode {
+  if (!wordLevel) return display
   const out: React.ReactNode[] = []
   const re = /[A-Za-z']+/g
   let last = 0
   let m: RegExpExecArray | null
   let k = 0
-  while ((m = re.exec(sentence)) !== null) {
-    out.push(sentence.slice(last, m.index))
+  while ((m = re.exec(display)) !== null) {
+    out.push(display.slice(last, m.index))
     const w = m[0]
-    const lw = w.toLowerCase()
-    const cls = 'w' + (isFamiliar(lw) ? '' : ' w-diff') + (isAcademic(lw) ? ' w-awl' : '')
-    out.push(
-      <span key={k++} className={cls} data-w={lw}>
-        {w}
-      </span>
-    )
+    if (!/[a-zA-Z]/.test(ntext.charAt(m.index))) {
+      out.push(w) // inside blanked markdown syntax — not counted, not marked
+    } else {
+      const lw = w.toLowerCase()
+      const cls = 'w' + (isFamiliar(lw) ? '' : ' w-diff') + (isAcademic(lw) ? ' w-awl' : '')
+      out.push(
+        <span key={k++} className={cls} data-w={lw}>
+          {w}
+        </span>
+      )
+    }
     last = m.index + w.length
   }
-  out.push(sentence.slice(last))
+  out.push(display.slice(last))
   return out
 }
 
 export default function ReaderPane(props: Props): React.JSX.Element {
   const { text, analysis, wordCount, settings } = props
   const wordLevel = wordCount <= WORD_ANNOTATION_CAP
+  const normalised = useMemo(() => normaliseMarkdown(text), [text])
 
   const body = useMemo(() => {
     if (!analysis) return null
@@ -69,7 +77,7 @@ export default function ReaderPane(props: Props): React.JSX.Element {
                 }
                 data-sent={s.i}
               >
-                {annotate(s.text, wordLevel)}
+                {annotate(s.text, normalised.slice(s.start, s.end), wordLevel)}
               </span>{' '}
             </React.Fragment>
           ))}
