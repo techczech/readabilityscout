@@ -1,6 +1,6 @@
 {
   "name": "readabilityscout",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ReadabilityScout — analyse the readability of any text file on disk",
   "main": "./out/main/index.js",
   "author": "Dominik Lukes",
@@ -31,10 +31,20 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.productivity",
-      "identity": null
+      "identity": "Developer ID Application: DOMINIK LUKES (M7H45AGG8A)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": false
     },
     "dmg": {
-      "title": "ReadabilityScout ${version}"
+      "title": "ReadabilityScout ${version}",
+      "artifactName": "${name}-${version}-mac-arm64.${ext}"
+    },
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "${name}-${version}-win-portable.${ext}"
     }
   },
   "dependencies": {
