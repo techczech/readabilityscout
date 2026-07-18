@@ -7,7 +7,7 @@ Electron build through IPC) plus packaged-app launch and window screenshots.
   samples, eight formulas, consensus scale, rhythm strip, vocabulary explorer,
   suggestions, settings, cheat-sheet, export (Markdown + JSON).
 - [x] **Settings.** Drawer: audience, theme, annotation layers, thresholds.
-  Persisted in `userData/settings.json` (todoscout pattern).
+  Persisted in `userData/settings.json` (family pattern).
 - [x] **Settings searchable + changelog.** Search filters rows; every change
   recorded old → new with timestamp and per-entry Reset (verified via IPC
   round-trip in the smoke test).

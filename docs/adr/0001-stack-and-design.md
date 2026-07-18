@@ -12,15 +12,14 @@ the scout app family at `06_apps-utilities/01_desktop-apps/`.
 
 ### 1. Stack: electron-vite + React + TS
 
-Locked by family convention (qa-scout AGENTS.md: "Stack (locked by
-convention): Electron + electron-vite + React + TS"; slidewell and todoscout
-match). Dependency versions mirror slidewell's known-good set (Electron 42.4.0,
+Locked by the scout-family convention ("Stack: Electron + electron-vite +
+React + TS"). Dependency versions mirror a sibling app's known-good set (Electron 42.4.0,
 electron-vite 5.0.0, React 18). Package manager: bun (bun.lock committed).
 
 ### 2. Visual design: ported 1:1 from the demo
 
 The demo's UI is the locked design — the user saw and approved it. Its CSS is
-ported verbatim into `src/renderer/src/styles.css` (slidewell's plain-CSS
+ported verbatim into `src/renderer/src/styles.css` (sibling plain-CSS
 precedent; no Tailwind) with a small additions block for desktop chrome (file
 chip, recents menu, pills, traffic-light inset). Gate-2 design rounds were
 therefore unnecessary; redirect by editing this ADR and the demo first.
@@ -35,9 +34,9 @@ keystroke is sub-millisecond at practical file sizes, so no IPC round-trip.
 
 ### 4. Icons: lucide-react
 
-Real Lucide set per Gate 5, family standard (qa-scout).
+Real Lucide set per Gate 5, family standard.
 
 ### 5. Packaging
 
-electron-builder config in package.json (slidewell pattern): dmg target,
+electron-builder config in package.json (family pattern): dmg target,
 `identity: null` (no signing), output in `release/`.

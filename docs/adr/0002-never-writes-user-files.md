@@ -15,8 +15,7 @@ contract has to be obvious and total.
   recents) and exports the user explicitly places via a save dialog.
 - There is no save-back, no autosave, no temp files next to the source. Edits
   in the buffer are scratch by definition ("edited" pill), matching the
-  qa-scout "app is git-free" precedent: the app touches nothing it wasn't
-  explicitly told to.
+  family precedent: the app touches nothing it wasn't explicitly told to.
 
 ## Consequences
 
