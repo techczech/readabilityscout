@@ -1,5 +1,7 @@
 # ReadabilityScout
 
+![ReadabilityScout analysing a text: Flesch gauge, grade-consensus scale, sentence-rhythm strip, and word-level annotations](docs/screenshot.png)
+
 Analyse the readability of any text file on your Mac. Eight established
 formulas, a grade-consensus scale, an interactive sentence-rhythm strip, and
 annotations that show you *which* words and sentences are the problem — all in
