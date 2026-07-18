@@ -1,0 +1,59 @@
+{
+  "name": "readabilityscout",
+  "version": "0.1.0",
+  "description": "ReadabilityScout — analyse the readability of any text file on disk",
+  "main": "./out/main/index.js",
+  "author": "Dominik Lukes",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
+    "build": "npm run typecheck && electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "electron .",
+    "pack": "electron-vite build && electron-builder --mac --dir",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "build:data": "node scripts/build-data.mjs",
+    "test:smoke": "electron-vite build && node e2e/smoke.mjs"
+  },
+  "build": {
+    "appId": "net.dominiklukes.readabilityscout",
+    "productName": "ReadabilityScout",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "dmg": {
+      "title": "ReadabilityScout ${version}"
+    }
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "lucide-react": "^1.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "42.4.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "5.0.0",
+    "playwright": "^1.60.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
+  }
+}
