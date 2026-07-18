@@ -14,5 +14,5 @@ Electron app: readability analysis of any text file on disk. Scout family (`06_a
 ## Verify
 
 1. `bun run typecheck`.
-2. `bun run test:smoke` — Playwright e2e: launch, file read via IPC, render, selection, changelog, drawer, cheat-sheet. Must print `"pass":true`.
-3. Visual: screenshot via the playwright snippet pattern in `_TASK-LOG` or e2e.
+2. `bun run test:smoke` — must print `"pass":true`.
+3. Release builds: run per-platform with explicit arch — `bunx electron-builder --mac --arm64` and `bunx electron-builder --win --x64` as separate invocations. A combined `--mac --win --x64` cross-applies the arch flag and mislabels the dmg (learned at 0.2.0). Always `lipo -info` the mac binary before releasing.
