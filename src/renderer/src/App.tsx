@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Settings, SettingsChange, RecentFile } from '../../shared/ipc'
-import { analyse, tokenizeWords, type Analysis } from './analysis/engine'
+import { analyse, normaliseMarkdown, tokenizeWords, type Analysis } from './analysis/engine'
 import { SAMPLES } from './analysis/samples'
 import { AUDIENCES } from './analysis/insights'
 import AppBar from './components/AppBar'
@@ -12,7 +12,7 @@ import HelpModal from './components/HelpModal'
 
 const MIN_WORDS = 30
 
-export type OpenFile = { path: string; name: string }
+export type OpenFile = { path: string; name: string; extracted: 'pdf' | 'docx' | null }
 
 export default function App(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -92,11 +92,12 @@ export default function App(): React.JSX.Element {
         return
       }
       setText(read.content)
-      setFile({ path: read.path, name: read.name })
+      setFile({ path: read.path, name: read.name, extracted: read.extracted })
       setModified(false)
       setExternalChange(false)
       setSelectedSentence(null)
       setRecents(await window.rs.getRecents())
+      if (read.extracted && source !== 'reload') showToast(`Text extracted from ${read.extracted === 'pdf' ? 'PDF' : 'Word document'} — layout ignored`)
     },
     [showToast]
   )
@@ -175,7 +176,8 @@ export default function App(): React.JSX.Element {
     return () => clearTimeout(t)
   }, [text])
 
-  const wordCount = useMemo(() => tokenizeWords(debouncedText).length, [debouncedText])
+  // Matches the analysis engine: markdown syntax never counts as words.
+  const wordCount = useMemo(() => tokenizeWords(normaliseMarkdown(debouncedText)).length, [debouncedText])
   const analysis: Analysis | null = useMemo(() => {
     if (wordCount < MIN_WORDS) return null
     return analyse(debouncedText, {
@@ -250,7 +252,7 @@ export default function App(): React.JSX.Element {
           modified={modified}
           externalChange={externalChange}
           analysis={analysis}
-          wordCount={wordCount}
+          wordCount={analysis ? analysis.counts.words : wordCount}
           onEdit={onEdit}
           onClear={clearText}
           onReload={reload}

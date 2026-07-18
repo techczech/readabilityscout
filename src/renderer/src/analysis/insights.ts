@@ -64,6 +64,21 @@ export function suggestionsFor(r: Analysis, aud: Audience, audienceKey: string):
       body: `This paragraph is ${lp.words} words. Paragraphs under 150 words are noticeably easier to stay with.`
     })
   }
+  if (r.principles.welcomeStart) {
+    out.push({
+      title: 'Move the welcome to the end',
+      quote: r.sentences[0] ? (r.sentences[0].text.length > 100 ? r.sentences[0].text.slice(0, 100) + '…' : r.sentences[0].text) : '',
+      body: 'The text opens with a welcome or thanks. Important information first; courtesies last — readers come for the content.'
+    })
+  }
+  if (r.principles.commaHeavy.length) {
+    const s = [...r.principles.commaHeavy].sort((a, b) => b.commas - a.commas)[0]
+    out.push({
+      title: r.principles.commaHeavy.length === 1 ? 'Turn a long sequence into a list' : `Turn ${r.principles.commaHeavy.length} long sequences into lists`,
+      quote: s.text.length > 140 ? s.text.slice(0, 140) + '…' : s.text,
+      body: `This sentence chains ${s.commas + 1} parts with commas. A bulleted list is easier to skim, scan and remember.`
+    })
+  }
   // 2. Sentences
   if (r.longSentences.length) {
     const s = [...r.longSentences].sort((a, b) => b.words - a.words)[0]
@@ -81,6 +96,18 @@ export function suggestionsFor(r: Analysis, aud: Audience, audienceKey: string):
     })
   }
   // 3. Words
+  if (r.principles.nominalisations.per100 > 5) {
+    const top = Object.entries(r.principles.nominalisations.freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([w]) => `“${w}”`)
+      .join(', ')
+    out.push({
+      title: 'Turn nouns back into verbs',
+      quote: '',
+      body: `${r.principles.nominalisations.per100.toFixed(1)} nominalisations per 100 words (${top}). “Make a decision” reads slower than “decide”.`
+    })
+  }
   if (r.difficult.pct > aud.diffPctMax) {
     const swaps = Object.entries(r.difficult.freq)
       .sort((a, b) => b[1] - a[1])
@@ -92,6 +119,13 @@ export function suggestionsFor(r: Analysis, aud: Audience, audienceKey: string):
       title: 'Swap unfamiliar words',
       quote: '',
       body: `${r.difficult.pct.toFixed(0)}% of words are outside the familiar list (target ≤ ${aud.diffPctMax}%).${swaps ? ' Try: ' + swaps + '.' : ' The word list shows which to reconsider.'}`
+    })
+  }
+  if (r.principles.readerAddress.count === 0 && audienceKey !== 'academic') {
+    out.push({
+      title: 'Address the reader',
+      quote: '',
+      body: '“You” never appears. Addressing the reader signals that what you say applies to them — and they pay more attention.'
     })
   }
   if (audienceKey !== 'academic' && r.awl.count > 0) {

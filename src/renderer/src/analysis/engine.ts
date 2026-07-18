@@ -9,8 +9,32 @@ import { DALE_CHALL_WORDS, AWL_WORDS } from './wordlists'
 
 const ABBREVS = ['Mr', 'Mrs', 'Ms', 'Dr', 'Prof', 'Jr', 'Sr', 'vs', 'etc', 'St', 'No']
 
-export type Sentence = { text: string; start: number }
+export type Sentence = { text: string; start: number; end: number }
 export type Paragraph = { text: string; start: number; end: number; heading: boolean }
+
+/* --- Markdown normalisation ---------------------------------------------
+ * Blank out non-prose markdown so it never counts as words or sentences:
+ * image syntax (alt + URL), link URLs (link text kept), bare URLs, HTML tags,
+ * and reference-link definition lines. Blanking is LENGTH-PRESERVING (every
+ * removed character becomes a space) so sentence offsets still map onto the
+ * original text for the reader view.
+ */
+export function normaliseMarkdown(text: string): string {
+  let out = text
+  const blank = (s: string): string => s.replace(/[^\n]/g, ' ')
+  // Images: whole construct is not prose — alt text and URL both ignored.
+  out = out.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, blank)
+  // Reference-style image/link definitions on their own line.
+  out = out.replace(/^[ \t]*\[[^\]\n]+\]:[ \t]*\S+[^\n]*$/gm, blank)
+  // Inline links: keep the link text, blank the (URL) part.
+  out = out.replace(/\]\([^)\n]*\)/g, (m) => ']' + blank(m.slice(1)))
+  // Bare URLs.
+  out = out.replace(/\bhttps?:\/\/[^\s)\]}>'"]+/g, blank)
+  out = out.replace(/\bwww\.[^\s)\]}>'"]+/g, blank)
+  // HTML tags (attributes pollute word counts).
+  out = out.replace(/<\/?[a-zA-Z][^>\n]*>/g, blank)
+  return out
+}
 
 /* --- Paragraphs -------------------------------------------------------- */
 
@@ -59,7 +83,8 @@ export function tokenizeSentences(text: string): Sentence[] {
   const push = (rawSlice: string, offset: number): void => {
     const trimmed = rawSlice.trim()
     if (!trimmed) return
-    sentences.push({ text: trimmed, start: offset + rawSlice.indexOf(trimmed.charAt(0)) })
+    const start = offset + rawSlice.indexOf(trimmed.charAt(0))
+    sentences.push({ text: trimmed, start, end: start + trimmed.length })
   }
 
   const segRe = /\n\s*\n/g
@@ -169,10 +194,24 @@ export type SentenceDetail = {
   i: number
   text: string
   start: number
+  end: number
   words: number
   syllables: number
   difficult: number
+  commas: number
 }
+
+// Computable signals from the five readability principles (ADR 0003).
+export type Principles = {
+  readerAddress: { count: number; per100: number } // "you/your" per 100 words
+  nominalisations: { count: number; per100: number; freq: Record<string, number> }
+  listItems: number
+  headingDensity: number // headings per prose paragraph (target ≈ 0.2+)
+  welcomeStart: boolean // text opens with welcome/thanks (move to end)
+  commaHeavy: SentenceDetail[] // long comma-chains that read better as lists
+}
+
+const NOMINALISATION = /(isation|ization|ibility|ality|tion|sion|ment|ness|ity|ance|ence)$/
 
 export type Analysis = {
   counts: { words: number; sentences: number; paragraphs: number; headings: number; syllables: number; characters: number }
@@ -197,6 +236,7 @@ export type Analysis = {
   consensus: { marks: Array<{ id: string; label: string; grade: number }>; median: number; min: number; max: number }
   time: { readingMin: number; speakingMin: number }
   targets: { longSentence: number; readingWpm: number }
+  principles: Principles
 }
 
 /* --- Main entry -------------------------------------------------------- */
@@ -206,13 +246,18 @@ export function analyse(text: string, opts: { longSentence?: number; readingWpm?
   const readingWpm = opts.readingWpm ?? 238
   const speakingWpm = 140
 
-  const paragraphs = splitParagraphs(text)
+  // Markdown syntax (images, URLs, HTML tags) is blanked length-preservingly
+  // before any counting, so it can never inflate word or sentence statistics.
+  // All offsets still map onto the original text for display.
+  const normalised = normaliseMarkdown(text)
+
+  const paragraphs = splitParagraphs(normalised)
   const headingParas = paragraphs.filter((p) => p.heading)
   const proseParas = paragraphs.filter((p) => !p.heading)
   const inHeading = (offset: number): boolean => headingParas.some((p) => offset >= p.start && offset < p.end)
 
   // Metrics run on prose only: headings are signposts, not sentences.
-  const sentences = tokenizeSentences(text).filter((s) => !inHeading(s.start))
+  const sentences = tokenizeSentences(normalised).filter((s) => !inHeading(s.start))
   const proseText = proseParas.map((p) => p.text).join('\n\n')
   const words = tokenizeWords(proseText)
 
@@ -262,7 +307,17 @@ export function analyse(text: string, opts: { longSentence?: number; readingWpm?
       ssyl += countSyllables(w)
       if (!isFamiliar(w)) sdiff++
     })
-    return { i, text: s.text, start: s.start, words: sw.length, syllables: ssyl, difficult: sdiff }
+    // Words counted from the normalised span; text displayed from the original.
+    return {
+      i,
+      text: text.slice(s.start, s.end),
+      start: s.start,
+      end: s.end,
+      words: sw.length,
+      syllables: ssyl,
+      difficult: sdiff,
+      commas: (s.text.match(/,/g) ?? []).length
+    }
   })
 
   const paraWordCounts = proseParas.map((p) => tokenizeWords(p.text).length)
@@ -309,6 +364,28 @@ export function analyse(text: string, opts: { longSentence?: number; readingWpm?
   const lengths = sentenceData.map((s) => s.words)
   const variance = lengths.length ? lengths.reduce((a, b) => a + Math.pow(b - asl, 2), 0) / lengths.length : 0
 
+  /* --- Principles (five-principles integration, ADR 0003) --- */
+  let readerAddressCount = 0
+  const nomFreq: Record<string, number> = {}
+  let nomCount = 0
+  words.forEach((w) => {
+    if (/^(you|your|yours|yourself|yourselves)$/.test(w)) readerAddressCount++
+    if (w.length >= 7 && NOMINALISATION.test(w)) {
+      nomCount++
+      nomFreq[w] = (nomFreq[w] ?? 0) + 1
+    }
+  })
+  const listItems = (normalised.match(/^\s*(?:[-*+•]|\d{1,2}[.)])\s+/gm) ?? []).length
+  const firstSentence = sentenceData[0]?.text ?? ''
+  const principles: Principles = {
+    readerAddress: { count: readerAddressCount, per100: totalWords ? (readerAddressCount / totalWords) * 100 : 0 },
+    nominalisations: { count: nomCount, per100: totalWords ? (nomCount / totalWords) * 100 : 0, freq: nomFreq },
+    listItems,
+    headingDensity: proseParas.length ? headingParas.length / proseParas.length : 0,
+    welcomeStart: /^\s*(welcome\b|thank you|thanks for|dear\s)/i.test(firstSentence),
+    commaHeavy: sentenceData.filter((s) => s.commas >= 4 && s.words > 20)
+  }
+
   return {
     counts: {
       words: totalWords,
@@ -337,6 +414,7 @@ export function analyse(text: string, opts: { longSentence?: number; readingWpm?
     scores,
     consensus: { marks, median, min: sorted[0] ?? 0, max: sorted[sorted.length - 1] ?? 0 },
     time: { readingMin: totalWords / readingWpm, speakingMin: totalWords / speakingWpm },
-    targets: { longSentence: longThreshold, readingWpm }
+    targets: { longSentence: longThreshold, readingWpm },
+    principles
   }
 }

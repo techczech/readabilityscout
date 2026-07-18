@@ -1,6 +1,6 @@
 {
   "name": "readabilityscout",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "ReadabilityScout — analyse the readability of any text file on disk",
   "main": "./out/main/index.js",
   "author": "Dominik Lukes",
@@ -31,7 +31,7 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.productivity",
-      "identity": "Developer ID Application: DOMINIK LUKES (M7H45AGG8A)",
+      "identity": "DOMINIK LUKES (M7H45AGG8A)",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "notarize": false
@@ -50,7 +50,9 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "lucide-react": "^1.25.0"
+    "fflate": "^0.8.3",
+    "lucide-react": "^1.25.0",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

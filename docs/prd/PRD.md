@@ -7,11 +7,14 @@ how readable it is — with the full Readability Studio analysis, not a score.
 
 ## Jobs it does
 
-1. Open any text file from disk (dialog, ⌘O, or a recents list).
+1. Open any text file from disk (dialog, ⌘O, or a recents list) — plain text,
+   Markdown, PDF, and Word (.docx); binary formats are text-extracted in memory.
 2. Follow the file: silent reload on external change when the buffer is
    untouched; a "changed on disk — reload" pill when it has been edited locally.
 3. Analyse live: eight formulas, grade consensus, sentence rhythm, word-level
-   annotations, vocabulary explorer, structure stats, suggestions.
+   annotations, vocabulary explorer, structure stats, readability-principles
+   checks (ADR 0003), suggestions. Markdown syntax (images, URLs, HTML) never
+   counts as prose.
 4. Paste/type scratch text with the same analysis (no file involved).
 5. Export: Markdown report to clipboard, full analysis JSON via a save dialog.
 
@@ -30,8 +33,11 @@ relationship with the user's disk; the only writes are settings/recents in
   buffer loaded, dashboard populated.
 - **Edited state** — "edited" pill; watch dot greyed; external changes surface
   as the reload pill instead of silently replacing work.
-- **File-error state** — binary / too large (>2 MB) / unreadable files get a
-  human-readable toast with the reason; the current buffer is untouched.
+- **File-error state** — binary / too large (2 MB text, 25 MB binary formats) /
+  unreadable / legacy-.doc files get a human-readable toast with the reason;
+  the current buffer is untouched.
+- **Extracted state** — PDF/Word files show a format badge in the file chip and
+  an extraction toast; layout is ignored by design.
 - **Settings drawer** — searchable; audience, theme, annotation layers,
   thresholds; changelog with per-entry reset.
 - **Cheat-sheet modal** — `?`; lists every shortcut including ⌘O / ⌘⇧R.

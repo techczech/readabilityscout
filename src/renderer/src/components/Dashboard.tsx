@@ -332,10 +332,40 @@ function StructureCard({ r, aud }: { r: Analysis; aud: Audience }): React.JSX.El
         {row(`Long sentences (>${r.targets.longSentence} words)`, String(r.longSentences.length), r.longSentences.length ? 'warn' : 'ok')}
         {row('Average paragraph', `${fmt(r.averages.paragraphWords, 0)} words`, r.averages.paragraphWords <= 150 ? 'ok' : 'warn', 'target ≤ 150')}
         {row('Long paragraphs (>150 words)', String(r.longParagraphs.length), r.longParagraphs.length ? 'warn' : 'ok')}
-        {row('Headings', String(r.counts.headings), r.counts.paragraphs >= 3 && r.counts.headings === 0 ? 'warn' : 'ok', r.counts.paragraphs >= 3 ? 'scannability' : '')}
+        {row(
+          'Headings',
+          r.counts.headings > 0 ? `${r.counts.headings} · 1 per ${fmt(1 / r.principles.headingDensity, 1)} paras` : '0',
+          r.counts.paragraphs >= 3 && r.principles.headingDensity < 0.2 ? 'warn' : 'ok',
+          'target ≥ 1 per 5'
+        )}
         {row('Average word length', `${fmt(r.averages.wordLength)} letters`)}
         {row('Syllables per word', fmt(r.averages.syllablesPerWord, 2))}
         {row('Complex words (3+ syllables)', String(r.complexWords))}
+      </div>
+    </div>
+  )
+}
+
+function PrinciplesCard({ r, audienceKey }: { r: Analysis; audienceKey: string }): React.JSX.Element {
+  const row = (label: string, value: string, cls?: string, note?: string): React.JSX.Element => (
+    <div className="stat-row" key={label}>
+      <span>{label}</span>
+      <span>
+        <b className={cls}>{value}</b>
+        {note && <span style={{ color: 'var(--ink-3)', fontSize: 11 }}> {note}</span>}
+      </span>
+    </div>
+  )
+  const p = r.principles
+  return (
+    <div className="card">
+      <h2><Lightbulb className="icon" />Principles<span className="spacer" /><span className="hint">readability foundations</span></h2>
+      <div className="stat-rows">
+        {row('Lists', p.listItems > 0 ? `${p.listItems} items` : 'none', p.listItems > 0 ? 'ok' : undefined, 'chunking')}
+        {row('Long comma sequences', String(p.commaHeavy.length), p.commaHeavy.length ? 'warn' : 'ok', 'list candidates')}
+        {row('Opens with welcome / thanks', p.welcomeStart ? 'Yes' : 'No', p.welcomeStart ? 'warn' : 'ok', p.welcomeStart ? 'move to end' : '')}
+        {row('Verbs over nouns', `${fmt(p.nominalisations.per100)} per 100`, p.nominalisations.per100 > 5 ? 'warn' : 'ok', 'target ≤ 5')}
+        {row('Addresses the reader', `${p.readerAddress.count}× “you”`, p.readerAddress.count > 0 ? 'ok' : audienceKey === 'academic' ? undefined : 'warn', audienceKey === 'academic' ? 'optional for academic' : '')}
       </div>
     </div>
   )
@@ -402,6 +432,7 @@ export default function Dashboard(props: Props): React.JSX.Element {
               <FormulasCard r={r} />
               <VocabCard r={r} />
               <StructureCard r={r} aud={props.audience} />
+              <PrinciplesCard r={r} audienceKey={props.settings.audience} />
               <SuggestionsCard r={r} aud={props.audience} audienceKey={props.settings.audience} />
             </>
           )}

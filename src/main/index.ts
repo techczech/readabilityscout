@@ -4,6 +4,7 @@ import { readFileSync, statSync, watch, writeFileSync, type FSWatcher } from 'no
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { IPC, type FileReadResult, type Settings } from '../shared/ipc'
 import { addRecent, clearRecents, loadChangelog, loadRecents, loadSettings, resetSetting, setSetting } from './settings'
+import { extractDocx, extractPdf, formatForPath } from './extract'
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024 // readability formulas are meaningless past this anyway
 
@@ -48,16 +49,36 @@ function createWindow(): void {
 
 /* --- File reading (never writing; ADR 0002) --- */
 
-function readTextFile(path: string): FileReadResult {
+const MAX_BINARY_BYTES = 25 * 1024 * 1024 // PDFs and Word docs are larger than prose files
+
+async function readTextFile(path: string): Promise<FileReadResult> {
   const name = basename(path)
   try {
     const stat = statSync(path)
     if (!stat.isFile()) return { ok: false, path, name, reason: 'That is a folder, not a file.' }
-    if (stat.size > MAX_FILE_BYTES)
-      return { ok: false, path, name, reason: `Too large to analyse (${Math.round(stat.size / 1024 / 1024)} MB; limit is 2 MB).` }
+
+    const format = formatForPath(path)
+    if (format === 'doc-legacy')
+      return { ok: false, path, name, reason: 'The old .doc format is not supported — save it as .docx and try again.' }
+
+    const limit = format ? MAX_BINARY_BYTES : MAX_FILE_BYTES
+    if (stat.size > limit)
+      return { ok: false, path, name, reason: `Too large to analyse (${Math.round(stat.size / 1024 / 1024)} MB; limit is ${limit / 1024 / 1024} MB).` }
+
     const buf = readFileSync(path)
+    if (format === 'docx') {
+      const content = extractDocx(buf)
+      if (!content) return { ok: false, path, name, reason: 'No readable text found in that Word document.' }
+      return { ok: true, path, name, content, extracted: 'docx', truncated: false }
+    }
+    if (format === 'pdf') {
+      const content = await extractPdf(buf)
+      if (!content) return { ok: false, path, name, reason: 'No readable text found in that PDF — it may be scanned images.' }
+      return { ok: true, path, name, content, extracted: 'pdf', truncated: false }
+    }
+
     if (buf.includes(0)) return { ok: false, path, name, reason: 'This looks like a binary file, not text.' }
-    return { ok: true, path, name, content: buf.toString('utf8'), truncated: false }
+    return { ok: true, path, name, content: buf.toString('utf8'), extracted: null, truncated: false }
   } catch {
     return { ok: false, path, name, reason: 'Could not read the file — it may have moved or be unreadable.' }
   }
@@ -126,12 +147,15 @@ function registerIpc(): void {
       title: 'Open a text file',
       properties: ['openFile'],
       filters: [
+        { name: 'All readable', extensions: ['txt', 'md', 'markdown', 'text', 'log', 'csv', 'rtf', 'pdf', 'docx'] },
         { name: 'Text', extensions: ['txt', 'md', 'markdown', 'text', 'log', 'csv', 'rtf'] },
+        { name: 'PDF', extensions: ['pdf'] },
+        { name: 'Word', extensions: ['docx'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     })
     if (result.canceled || result.filePaths.length === 0) return null
-    const read = readTextFile(result.filePaths[0])
+    const read = await readTextFile(result.filePaths[0])
     if (read.ok) {
       startWatching(read.path)
       addRecent(read.path, read.name)
@@ -139,8 +163,8 @@ function registerIpc(): void {
     return read
   })
 
-  ipcMain.handle(IPC.readFile, (_e, path: string): FileReadResult => {
-    const read = readTextFile(path)
+  ipcMain.handle(IPC.readFile, async (_e, path: string): Promise<FileReadResult> => {
+    const read = await readTextFile(path)
     if (read.ok) {
       startWatching(read.path)
       addRecent(read.path, read.name)

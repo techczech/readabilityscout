@@ -70,9 +70,10 @@ export default function AppBar(props: Props): React.JSX.Element {
         <h1>ReadabilityScout</h1>
       </div>
       {props.file && (
-        <span className="file-chip" title={props.file.path}>
+        <span className="file-chip" title={props.file.path + (props.file.extracted ? ` (text extracted from ${props.file.extracted.toUpperCase()})` : '')}>
           <FileText className="icon" />
           <span className="fname">{props.file.name}</span>
+          {props.file.extracted && <span className="badge">{props.file.extracted}</span>}
           <span className={'watch-dot' + (props.modified ? ' off' : '')} title={props.modified ? 'Edited locally — not following disk' : 'Following changes on disk'} />
         </span>
       )}

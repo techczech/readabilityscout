@@ -30,6 +30,8 @@ export type OpenedFile = {
   path: string
   name: string
   content: string
+  /** Set when the content was extracted from a binary format rather than read as plain text. */
+  extracted: 'pdf' | 'docx' | null
   truncated: boolean
 }
 
