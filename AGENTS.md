@@ -8,11 +8,11 @@ Electron app: readability analysis of any text file on disk. Scout family (`06_a
 - Visual design is locked in `agent-demos/kimi-k3-readability-test`; `src/renderer/src/styles.css` is a verbatim port + an additions block at the end. Change the design there first, then re-port.
 - Engine: `src/renderer/src/analysis/engine.ts` is the TS port of the demo's `analysis.js` — keep the two documented deviations (stem+e fix; headings excluded). `wordlists.ts` / `samples.ts` are generated: `bun run build:data`.
 - Engine invariants: `normaliseMarkdown` must stay length-preserving (offsets map to the original text); sentence/word metrics run only on normalised prose; Principles card shows computable signals only — no layout-level principles phoned in (ADR 0003).
-- Gate-5 invariants on every edit: `?` cheat-sheet current with SHORTCUTS in `HelpModal.tsx`; every click target keyboard-reachable; settings changes logged with reset; British spelling; light identity, dark as option.
+- Gate-5 invariants on every edit: commands only in `src/shared/commands.ts` (menu, `?` cheat-sheet, Shortcuts page read it); every click target keyboard-reachable; settings only in `src/shared/settings-schema.ts` (shared Settings window logs + resets); British spelling; light identity, dark as option.
 - Bump version every installed build.
 
 ## Verify
 
-1. `bun run typecheck`.
+1. `bun run typecheck`; `bun run test:unit`. (If ELECTRON_RUN_AS_NODE is set in the shell, `env -u ELECTRON_RUN_AS_NODE` before smoke.)
 2. `bun run test:smoke` — must print `"pass":true`.
 3. Release builds: run per-platform with explicit arch — `bunx electron-builder --mac --arm64` and `bunx electron-builder --win --x64` as separate invocations. A combined `--mac --win --x64` cross-applies the arch flag and mislabels the dmg (learned at 0.2.0). Always `lipo -info` the mac binary before releasing.

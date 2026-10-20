@@ -8,6 +8,7 @@ import type { Analysis } from '../analysis/engine'
 import { SAMPLES } from '../analysis/samples'
 import { AUDIENCES, buildReport } from '../analysis/insights'
 import type { OpenFile } from '../App'
+import { withChord } from '../../../shared/commands'
 
 type Props = {
   file: OpenFile | null
@@ -15,6 +16,7 @@ type Props = {
   recents: RecentFile[]
   analysis: Analysis | null
   settings: Settings
+  bindings: Record<string, string>
   audienceLabel: string
   onOpenDialog: () => void
   onOpenPath: (path: string) => void
@@ -26,7 +28,7 @@ type Props = {
 }
 
 export default function AppBar(props: Props): React.JSX.Element {
-  const { analysis, settings, showToast } = props
+  const { analysis, settings, bindings, showToast } = props
   const [recentsOpen, setRecentsOpen] = useState(false)
   const recentsRef = useRef<HTMLDivElement>(null)
 
@@ -79,14 +81,15 @@ export default function AppBar(props: Props): React.JSX.Element {
       )}
       <div className="spacer" />
       <div className="appbar-actions">
-        <button className="btn" onClick={props.onOpenDialog} title="Open a text file (⌘O)">
+        <button className="btn" onClick={props.onOpenDialog} title={withChord(bindings, 'open', 'Open a text file')}>
           <FolderOpen className="icon" />Open…
         </button>
         <div className="recents-wrap" ref={recentsRef}>
           <button
             className="btn icon-only"
             onClick={() => setRecentsOpen((v) => !v)}
-            title="Recent files"
+            id="rs-recents"
+            title={withChord(bindings, 'recent-files', 'Recent files')}
             aria-label="Recent files"
             aria-expanded={recentsOpen}
           >
@@ -138,16 +141,16 @@ export default function AppBar(props: Props): React.JSX.Element {
           </select>
           <ChevronDown className="icon" />
         </div>
-        <button className="btn" id="rs-copy" onClick={copyReport} title="Copy a Markdown report to the clipboard">
-          <Copy className="icon" />Copy report <kbd>R</kbd>
+        <button className="btn" id="rs-copy" onClick={copyReport} title={withChord(bindings, 'copy-report', 'Copy a Markdown report to the clipboard')}>
+          <Copy className="icon" />Copy report {bindings['copy-report'] && <kbd>{bindings['copy-report']}</kbd>}
         </button>
-        <button className="btn icon-only" id="rs-export" onClick={exportJson} title="Save the full analysis as JSON" aria-label="Save analysis as JSON">
+        <button className="btn icon-only" id="rs-export" onClick={exportJson} title={withChord(bindings, 'save-json', 'Save the full analysis as JSON')} aria-label="Save analysis as JSON">
           <Download className="icon" />
         </button>
-        <button className="btn icon-only" onClick={props.onOpenSettings} title="Settings" aria-label="Settings">
+        <button className="btn icon-only" onClick={props.onOpenSettings} title={withChord(bindings, 'settings', 'Settings')} aria-label="Settings">
           <SettingsIcon className="icon" />
         </button>
-        <button className="btn icon-only" onClick={props.onOpenHelp} title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+        <button className="btn icon-only" onClick={props.onOpenHelp} title={withChord(bindings, 'cheat', 'Keyboard shortcuts')} aria-label="Keyboard shortcuts">
           <CircleQuestionMark className="icon" />
         </button>
       </div>
