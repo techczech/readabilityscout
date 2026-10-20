@@ -1,6 +1,6 @@
 // Shared types and channel names for main <-> renderer IPC.
 // The app never writes to user files (ADR 0002); the only disk writes are
-// settings/recents in userData and explicit exports via a save dialog.
+// the settings file and recents in userData and explicit exports via a save dialog.
 
 export type Settings = {
   audience: 'broad' | 'general' | 'academic'
@@ -12,11 +12,10 @@ export type Settings = {
   readingWpm: number
 }
 
-export type SettingsChange = {
-  key: keyof Settings
-  oldValue: unknown
-  newValue: unknown
-  at: string // ISO timestamp
+/** What the main window needs of the settings store: values with defaults filled in, and the effective chord of every command. */
+export type SettingsSnapshot = {
+  settings: Settings
+  bindings: Record<string, string>
 }
 
 export type RecentFile = {
@@ -52,11 +51,11 @@ export const IPC = {
   fileChanged: 'rs:file-changed',
   getSettings: 'rs:get-settings',
   setSetting: 'rs:set-setting',
-  resetSetting: 'rs:reset-setting',
-  getChangelog: 'rs:get-changelog',
+  settingsChanged: 'rs:settings-changed',
+  runCommand: 'rs:run-command',
+  command: 'rs:command',
+  setContext: 'rs:set-context',
   getRecents: 'rs:get-recents',
   clearRecents: 'rs:clear-recents',
-  saveExport: 'rs:save-export',
-  menuOpen: 'rs:menu-open',
-  menuReload: 'rs:menu-reload'
+  saveExport: 'rs:save-export'
 } as const

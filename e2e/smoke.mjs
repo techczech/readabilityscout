@@ -1,10 +1,13 @@
 // Runtime smoke test (family pattern): launch the built app, exercise the
 // load-bearing paths through real IPC, and verify the full pipeline.
 // Covers: plain text, markdown image-syntax exclusion, principles card,
-// PDF + DOCX extraction, legacy .doc rejection, settings changelog, cheat-sheet.
+// PDF + DOCX extraction, legacy .doc rejection, 0.2.x settings migration, settings changelog,
+// the shared Settings window (⌘,), the generated menu bar and the registry-driven cheat-sheet.
 // Run: `node e2e/smoke.mjs` (after `bunx electron-vite build`), or `bun run test:smoke`.
 import { _electron as electron } from 'playwright'
-import { writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { zipSync, strToU8 } from 'fflate'
 
 /* --- fixtures --- */
@@ -60,7 +63,14 @@ writeFileSync('/tmp/rs-smoke-legacy.doc', 'not really a doc file')
 
 /* --- test --- */
 const out = (o) => console.log(JSON.stringify(o))
-const app = await electron.launch({ args: ['.'] })
+// A throwaway data folder holding a 0.2.x settings file: the app must migrate it on start.
+const dataDir = mkdtempSync(join(tmpdir(), 'rs-smoke-data-'))
+writeFileSync(
+  join(dataDir, 'settings.json'),
+  JSON.stringify({ audience: 'general', theme: 'light', hlDiff: true, hlAwl: false, hlLong: true, longSentence: 25, readingWpm: 238 })
+)
+writeFileSync(join(dataDir, 'settings-changelog.json'), '[]')
+const app = await electron.launch({ args: ['.'], env: { ...process.env, READABILITYSCOUT_DATA_DIR: dataDir } })
 try {
   const win = await app.firstWindow({ timeout: 20000 })
   await win.waitForLoadState('domcontentloaded')
@@ -119,22 +129,70 @@ try {
   await win.waitForTimeout(200)
   const selInReader = await win.locator('.sent.s-sel').count()
 
-  // Settings changelog round-trip.
-  await win.evaluate(() => window.rs.setSetting('audience', 'broad'))
-  const changelog = await win.evaluate(() => window.rs.getChangelog())
-  const changelogOk = changelog.length > 0 && changelog[0].key === 'audience' && changelog[0].newValue === 'broad'
-  await win.evaluate(() => window.rs.resetSetting('audience'))
+  // Legacy settings.json migrated: value kept (hlAwl off), file is v2, old changelog gone.
+  const stored = () => JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))
+  const migrated =
+    stored().format === 'bridle-settings' &&
+    stored().settings['annotations.academic'] === false &&
+    stored().changes[0].who.kind === 'app-update' &&
+    !existsSync(join(dataDir, 'settings-changelog.json')) &&
+    (await win.evaluate(() => !document.body.classList.contains('hl-awl')))
 
-  // Drawer + cheat-sheet.
+  // Settings changelog round-trip through the store (who: you), then reset.
+  await win.evaluate(() => window.rs.setSetting('audience', 'broad'))
+  const changelogOk = stored().changes[0].key === 'analysis.audience' && stored().changes[0].to === 'broad' && stored().changes[0].who.kind === 'you'
+  await win.evaluate(() => window.rs.setSetting('audience', 'general'))
+
+  // Annotation toggle by key (D) lands in the store and the body class.
   await win.keyboard.press('Escape')
-  await win.keyboard.press('s')
+  await win.keyboard.press('d')
   await win.waitForTimeout(300)
-  const drawerOpen = await win.locator('.drawer.show').count()
-  const switchesVisible = await win.locator('.drawer .switch').count()
-  await win.keyboard.press('Escape')
+  const toggledByKey = stored().settings['annotations.unfamiliar'] === false && (await win.evaluate(() => !document.body.classList.contains('hl-diff')))
+  await win.keyboard.press('d')
+
+  // Generated menu bar: app menus from the registry, Settings… with ⌘, in the App menu.
+  const menu = await app.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu().items.map((m) => ({ label: m.label, items: m.submenu.items.map((i) => [i.label, i.accelerator ?? '']) }))
+  )
+  const menuLabels = menu.map((m) => m.label)
+  const menuOk =
+    ['File', 'Text', 'View', 'Edit', 'Window', 'Help'].every((l) => menuLabels.includes(l)) &&
+    menu[0].items.some(([l, a]) => l === 'Settings…' && a === 'Cmd+,') &&
+    menu[0].items.some(([l]) => l === 'Export Settings…') &&
+    menu[0].items.some(([l]) => l === 'Import Settings…') &&
+    menu.find((m) => m.label === 'File').items.some(([l, a]) => l === 'Open a text file…' && a === 'Cmd+O')
+
+  // Shared Settings window: ⌘, opens it (one instance), it shows the app's sections.
+  await win.keyboard.press('Meta+,')
+  await win.waitForTimeout(1200)
+  await win.keyboard.press('Meta+,')
+  await win.waitForTimeout(400)
+  const settingsWin = app.windows().find((w) => w.url().includes('settings.html'))
+  const settingsWindows = app.windows().filter((w) => w.url().includes('settings.html')).length
+  let settingsOk = false
+  let settingsRows = 0
+  if (settingsWin) {
+    await settingsWin.waitForSelector('.bsw-root', { timeout: 8000 })
+    const nav = await settingsWin.locator('.bsw-nav').allTextContents()
+    settingsOk = ['General', 'Appearance', 'Shortcuts', 'Analysis', 'Annotations', 'Changes', 'About'].every((n) => nav.some((t) => t.includes(n)))
+    await settingsWin.locator('.bsw-nav', { hasText: 'Analysis' }).click()
+    settingsRows = await settingsWin.locator('.bsw-row').count()
+    // A change made from outside the window (the store) shows up within a second.
+    await win.evaluate(() => window.rs.setSetting('longSentence', 31))
+    await settingsWin.waitForTimeout(1000)
+    settingsOk = settingsOk && (await settingsWin.locator('.bsw-root').innerText()).includes('31')
+    await win.evaluate(() => window.rs.setSetting('longSentence', 25))
+  }
+  const settingsClosed = settingsWin ? (await settingsWin.close(), true) : false
+
+  // Cheat-sheet generated from the registry.
+  await win.bringToFront()
   await win.keyboard.press('?')
   await win.waitForTimeout(300)
   const helpOpen = await win.locator('.modal.show').count()
+  const helpRows = await win.locator('.modal.show .keys-table tr:not(.keys-group)').count()
+  const helpHasOpen = (await win.locator('.modal.show').innerText()).includes('⌘O')
+  await win.keyboard.press('Escape')
 
   const pass =
     title === 'ReadabilityScout' &&
@@ -153,15 +211,22 @@ try {
     Number(docxGauge) < 20 && // bureaucratic text scores very hard
     parseFloat(nominalisationRow) > 5 &&
     selInReader === 1 &&
+    migrated &&
     changelogOk &&
-    drawerOpen === 1 &&
-    switchesVisible === 3 &&
-    helpOpen === 1
+    toggledByKey &&
+    menuOk &&
+    settingsWindows === 1 &&
+    settingsOk &&
+    settingsRows >= 3 &&
+    settingsClosed &&
+    helpOpen === 1 &&
+    helpRows >= 16 &&
+    helpHasOpen
 
   out({
     pass, title, emptyVisible, gauge, cards, rhythmBars, unfamiliarSpans, principlesRows,
     mdWords, mdSentences, mdUrlMarked, pdfOk, docxOk, docRejected, docxGauge,
-    nominalisationRow, selInReader, changelogOk, drawerOpen, switchesVisible, helpOpen
+    nominalisationRow, selInReader, migrated, changelogOk, toggledByKey, menuOk, settingsWindows, settingsOk, settingsRows, helpOpen, helpRows, helpHasOpen
   })
   process.exitCode = pass ? 0 : 1
 } finally {

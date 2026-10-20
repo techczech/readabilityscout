@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Settings, SettingsChange, RecentFile } from '../../shared/ipc'
+import type { Settings, RecentFile } from '../../shared/ipc'
+import { MAIN_COMMANDS, commandForEvent, registry, type CommandContext, type CommandId } from '../../shared/commands'
 import { analyse, normaliseMarkdown, tokenizeWords, type Analysis } from './analysis/engine'
 import { SAMPLES } from './analysis/samples'
 import { AUDIENCES } from './analysis/insights'
@@ -7,7 +8,6 @@ import AppBar from './components/AppBar'
 import EditorPane from './components/EditorPane'
 import ReaderPane from './components/ReaderPane'
 import Dashboard from './components/Dashboard'
-import SettingsDrawer from './components/SettingsDrawer'
 import HelpModal from './components/HelpModal'
 
 const MIN_WORDS = 30
@@ -16,7 +16,7 @@ export type OpenFile = { path: string; name: string; extracted: 'pdf' | 'docx' |
 
 export default function App(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [changelog, setChangelog] = useState<SettingsChange[]>([])
+  const [bindings, setBindings] = useState<Record<string, string>>({})
   const [recents, setRecents] = useState<RecentFile[]>([])
 
   const [text, setText] = useState('')
@@ -25,7 +25,6 @@ export default function App(): React.JSX.Element {
   const [externalChange, setExternalChange] = useState(false)
   const [selectedSentence, setSelectedSentence] = useState<number | null>(null)
 
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -38,9 +37,14 @@ export default function App(): React.JSX.Element {
 
   /* --- Initial load --- */
   useEffect(() => {
-    window.rs.getSettings().then(setSettings)
-    window.rs.getChangelog().then(setChangelog)
-    window.rs.getRecents().then(setRecents)
+    const apply = (snap: { settings: Settings; bindings: Record<string, string> }): void => {
+      setSettings(snap.settings)
+      setBindings(snap.bindings)
+    }
+    void window.rs.getSettings().then(apply)
+    void window.rs.getRecents().then(setRecents)
+    // The Settings window, the settings CLI and imports change the same store.
+    return window.rs.onSettingsChanged(apply)
   }, [])
 
   /* --- Theme + annotation layers on <body> (CSS ported 1:1 from the demo) --- */
@@ -70,17 +74,9 @@ export default function App(): React.JSX.Element {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  /* --- Settings mutations (main process persists + logs) --- */
+  /* --- Settings mutations (main process persists + logs; the Settings window is the full editor) --- */
   const setSetting = useCallback(async (key: keyof Settings, value: unknown) => {
-    const { settings: next } = await window.rs.setSetting(key, value)
-    setSettings(next)
-    setChangelog(await window.rs.getChangelog())
-  }, [])
-
-  const resetSetting = useCallback(async (key: keyof Settings) => {
-    const { settings: next } = await window.rs.resetSetting(key)
-    setSettings(next)
-    setChangelog(await window.rs.getChangelog())
+    await window.rs.setSetting(key, value)
   }, [])
 
   /* --- File handling --- */
@@ -131,14 +127,8 @@ export default function App(): React.JSX.Element {
         return current
       })
     })
-    const offOpen = window.rs.onMenuOpen(openDialog)
-    const offReload = window.rs.onMenuReload(reload)
-    return () => {
-      off()
-      offOpen()
-      offReload()
-    }
-  }, [acceptRead, openDialog, reload])
+    return off
+  }, [acceptRead])
 
   /* --- Text editing --- */
   const onEdit = useCallback(
@@ -191,38 +181,71 @@ export default function App(): React.JSX.Element {
       setSelectedSentence(null)
   }, [analysis, selectedSentence])
 
-  /* --- Global keyboard (single letters outside editable fields) --- */
+  /* --- Commands: one handler per registry command; keys and the menu bar both land here --- */
+  const ctx: CommandContext = useMemo(() => ({ hasFile: file !== null, hasAnalysis: analysis !== null }), [file, analysis])
+  useEffect(() => {
+    void window.rs.setContext(ctx) // the menu bar greys out what is unavailable
+  }, [ctx])
+
+  const handlers: Partial<Record<CommandId, () => void>> = {
+    open: openDialog,
+    reload,
+    'recent-files': () => document.getElementById('rs-recents')?.click(),
+    'clear-recents': () => void window.rs.clearRecents().then(setRecents),
+    'sample-1': () => loadSample(SAMPLES[0].id),
+    'sample-2': () => loadSample(SAMPLES[1].id),
+    'sample-3': () => loadSample(SAMPLES[2].id),
+    'sample-4': () => loadSample(SAMPLES[3].id),
+    'focus-editor': () => document.getElementById('rs-editor')?.focus(),
+    'clear-text': clearText,
+    'copy-report': () => document.getElementById('rs-copy')?.click(),
+    'save-json': () => document.getElementById('rs-export')?.click(),
+    'toggle-diff': () => settings && void setSetting('hlDiff', !settings.hlDiff),
+    'toggle-awl': () => settings && void setSetting('hlAwl', !settings.hlAwl),
+    'toggle-long': () => settings && void setSetting('hlLong', !settings.hlLong),
+    cheat: () => setHelpOpen(true),
+    dismiss: () => {
+      if (helpOpen) {
+        setHelpOpen(false)
+        // Focus can linger in a now-hidden overlay and would swallow the next single-letter shortcut.
+        ;(document.activeElement as HTMLElement | null)?.blur()
+      } else {
+        const t = document.activeElement as HTMLElement | null
+        if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)) t.blur()
+      }
+    }
+  }
+
+  const run = (id: string): void => {
+    if (MAIN_COMMANDS.has(id)) {
+      void window.rs.runCommand(id)
+      return
+    }
+    const reason = registry.byId(id)?.available?.(ctx) ?? null
+    if (reason) showToast(reason)
+    else handlers[id as CommandId]?.()
+  }
+  // Event handlers registered once read the newest closure through these refs.
+  const runRef = useRef(run)
+  runRef.current = run
+  const bindingsRef = useRef(bindings)
+  bindingsRef.current = bindings
+  const helpOpenRef = useRef(helpOpen)
+  helpOpenRef.current = helpOpen
+
+  useEffect(() => window.rs.onCommand((id) => runRef.current(id)), [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const t = e.target as HTMLElement | null
-      const editable =
-        t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)
-      if (e.key === 'Escape') {
-        if (drawerOpen || helpOpen) {
-          setDrawerOpen(false)
-          setHelpOpen(false)
-          // Focus can linger in a now-hidden overlay input and would swallow
-          // the next single-letter shortcut.
-          ;(document.activeElement as HTMLElement | null)?.blur()
-        } else if (editable) (t as HTMLElement).blur()
-        return
-      }
-      if (editable || e.metaKey || e.ctrlKey || e.altKey) return
-      const k = e.key.toLowerCase()
-      if (e.key === '?') setHelpOpen(true)
-      else if (k === 's') setDrawerOpen(true)
-      else if (k === 'e') document.getElementById('rs-editor')?.focus()
-      else if (k === 'x') clearText()
-      else if (k === 'r') document.getElementById('rs-copy')?.click()
-      else if (k === 'j') document.getElementById('rs-export')?.click()
-      else if (k === 'd' && settings) void setSetting('hlDiff', !settings.hlDiff)
-      else if (k === 'a' && settings) void setSetting('hlAwl', !settings.hlAwl)
-      else if (k === 'l' && settings) void setSetting('hlLong', !settings.hlLong)
-      else if (k >= '1' && k <= String(SAMPLES.length)) loadSample(SAMPLES[+k - 1].id)
+      const inField = !!t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable)
+      const id = commandForEvent(e, bindingsRef.current, { inField, onControl: t?.tagName === 'BUTTON', overlay: helpOpenRef.current })
+      if (!id) return
+      e.preventDefault()
+      runRef.current(id)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [drawerOpen, helpOpen, settings, setSetting, clearText, loadSample])
+  }, [])
 
   if (!settings) return <div className="boot" />
 
@@ -236,13 +259,14 @@ export default function App(): React.JSX.Element {
         recents={recents}
         analysis={analysis}
         settings={settings}
+        bindings={bindings}
         audienceLabel={audience.label}
         onOpenDialog={openDialog}
         onOpenPath={openPath}
         onClearRecents={() => void window.rs.clearRecents().then(setRecents)}
         onLoadSample={loadSample}
-        onOpenSettings={() => setDrawerOpen(true)}
-        onOpenHelp={() => setHelpOpen(true)}
+        onOpenSettings={() => run('settings')}
+        onOpenHelp={() => run('cheat')}
         showToast={showToast}
       />
       <main className="layout">
@@ -276,22 +300,8 @@ export default function App(): React.JSX.Element {
         />
       </main>
 
-      <div
-        className={'scrim' + (drawerOpen || helpOpen ? ' show' : '')}
-        onClick={() => {
-          setDrawerOpen(false)
-          setHelpOpen(false)
-        }}
-      />
-      <SettingsDrawer
-        open={drawerOpen}
-        settings={settings}
-        changelog={changelog}
-        onClose={() => setDrawerOpen(false)}
-        onSet={setSetting}
-        onReset={resetSetting}
-      />
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <div className={'scrim' + (helpOpen ? ' show' : '')} onClick={() => setHelpOpen(false)} />
+      <HelpModal open={helpOpen} bindings={bindings} onClose={() => setHelpOpen(false)} />
       <div className={'toast' + (toast ? ' show' : '')} role="status">
         {toast}
       </div>

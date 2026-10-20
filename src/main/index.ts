@@ -1,10 +1,16 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join, basename } from 'node:path'
 import { readFileSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { IPC, type FileReadResult, type Settings } from '../shared/ipc'
-import { addRecent, clearRecents, loadChangelog, loadRecents, loadSettings, resetSetting, setSetting } from './settings'
+import { KEY_OF } from '../shared/settings-schema'
+import { MAIN_COMMANDS, type CommandContext } from '../shared/commands'
+import { addRecent, clearRecents, loadRecents } from './recents'
+import { startSettings, type SettingsApp } from './settings-host'
 import { extractDocx, extractPdf, formatForPath } from './extract'
+
+// Tests and the settings CLI point the app at a throwaway data folder.
+if (process.env['READABILITYSCOUT_DATA_DIR']) app.setPath('userData', process.env['READABILITYSCOUT_DATA_DIR'])
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024 // readability formulas are meaningless past this anyway
 
@@ -12,6 +18,7 @@ let mainWindow: BrowserWindow | null = null
 let watcher: FSWatcher | null = null
 let watchedPath: string | null = null
 let reloadTimer: NodeJS.Timeout | null = null
+let settings: SettingsApp | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -109,33 +116,12 @@ function startWatching(path: string): void {
   }
 }
 
-/* --- Menu: keep Edit (clipboard keys) and add File actions --- */
-
-function buildMenu(): void {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Open Text File…',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => mainWindow?.webContents.send(IPC.menuOpen)
-        },
-        {
-          label: 'Reload from Disk',
-          accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => mainWindow?.webContents.send(IPC.menuReload)
-        },
-        { type: 'separator' },
-        process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
-      ]
-    },
-    { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' }
-  ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+function openMain(): void {
+  if (!mainWindow) createWindow()
+  else {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
 }
 
 /* --- IPC --- */
@@ -175,10 +161,17 @@ function registerIpc(): void {
   ipcMain.handle(IPC.watch, (_e, path: string) => startWatching(path))
   ipcMain.handle(IPC.unwatch, () => stopWatching())
 
-  ipcMain.handle(IPC.getSettings, () => loadSettings())
-  ipcMain.handle(IPC.setSetting, (_e, key: keyof Settings, value: unknown) => setSetting(key, value))
-  ipcMain.handle(IPC.resetSetting, (_e, key: keyof Settings) => resetSetting(key))
-  ipcMain.handle(IPC.getChangelog, () => loadChangelog())
+  ipcMain.handle(IPC.getSettings, () => settings?.snapshot())
+  ipcMain.handle(IPC.setSetting, (_e, key: keyof Settings, value: unknown) => {
+    if (typeof key !== 'string' || !Object.hasOwn(KEY_OF, key)) throw new Error('Unknown setting')
+    return settings?.setValue(key, value)
+  })
+  ipcMain.handle(IPC.runCommand, (_e, id: unknown) => {
+    if (typeof id === 'string' && MAIN_COMMANDS.has(id)) settings?.runMainCommand(id)
+  })
+  ipcMain.handle(IPC.setContext, (_e, ctx: CommandContext) => {
+    settings?.setContext({ hasFile: ctx?.hasFile === true, hasAnalysis: ctx?.hasAnalysis === true })
+  })
   ipcMain.handle(IPC.getRecents, () => loadRecents())
   ipcMain.handle(IPC.clearRecents, () => clearRecents())
 
@@ -195,16 +188,22 @@ function registerIpc(): void {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('net.dominiklukes.readabilityscout')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
-  buildMenu()
   registerIpc()
+  settings = await startSettings({
+    openMain,
+    sendCommand: (id) => mainWindow?.webContents.send(IPC.command, id),
+    changed: (snapshot) => mainWindow?.webContents.send(IPC.settingsChanged, snapshot)
+  })
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('will-quit', () => settings?.dispose())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

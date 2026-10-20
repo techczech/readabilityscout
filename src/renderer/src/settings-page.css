@@ -1,0 +1,14 @@
+/* Frame of the Settings window: a drag strip under the hidden-inset title bar, then the shared window. */
+html, body, #root { height: 100%; margin: 0; }
+#root { display: flex; flex-direction: column; background: #ececf0; }
+.rs-titlebar {
+  height: 40px; flex: none; display: flex; align-items: center; justify-content: center;
+  background: #f6f6f8; border-bottom: 1px solid #cfd1d8; -webkit-app-region: drag;
+  font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #1d1d1f; user-select: none;
+}
+.bsw-root.rs-settings { flex: 1; height: auto; min-height: 0; }
+/* ReadabilityScout's teal, from the main window's --accent tokens */
+.bsw-root.rs-settings {
+  --bsw-accent: #0f766e; --bsw-accent-dark: #0d5f59; --bsw-accent-tint: #d3e7e4;
+  --bsw-accent-ink: #0d5f59; --bsw-accent-wash: #f0f7f6; --bsw-accent-hover: #e0efed;
+}
