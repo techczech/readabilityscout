@@ -92,7 +92,8 @@ export async function startSettings(wiring: Wiring): Promise<SettingsApp> {
     runMainCommand(id) {
       if (!MAIN_COMMANDS.has(id)) return
       if (id === 'export-settings') void host?.exportSettings()
-      else host?.openSettingsWindow() // import-settings: the Import button is in General › Settings file
+      else if (id === 'import-settings') host?.startImport()
+      else host?.openSettingsWindow()
     },
     setContext(next) {
       if (next.hasFile === ctx.hasFile && next.hasAnalysis === ctx.hasAnalysis) return
